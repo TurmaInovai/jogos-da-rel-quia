@@ -25,21 +25,56 @@
             </div>
         </header>
 
-        <main class="canvas-wrapper">
-            <canvas id="gameCanvas" width="440" height="440"></canvas>
-            
-            <div id="game-over-screen" class="overlay hidden">
-                <div class="glass-panel">
-                    <h2>Game Over</h2>
-                    <p>Sua pontuação: <span id="final-score">0</span></p>
-                    <button id="restart-btn" class="glow-button">Tentar Novamente</button>
+        <main class="game-content">
+            <div class="canvas-wrapper">
+                <canvas id="gameCanvas" width="440" height="440" tabindex="0"></canvas>
+                
+                <!-- Tela Inicial (Capa) -->
+                <div id="start-screen" class="overlay">
+                    <div class="glass-panel start-panel">
+                        <img src="cover.png" alt="Neon Snake Cover" class="cover-image">
+                        <div class="difficulty-selector">
+                            <button class="diff-btn" data-diff="facil">Fácil</button>
+                            <button class="diff-btn" data-diff="medio">Médio</button>
+                            <button class="diff-btn" data-diff="dificil">Difícil</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="game-over-screen" class="overlay hidden">
+                    <div class="glass-panel">
+                        <h2>Game Over</h2>
+                        <p>Sua pontuação: <span id="final-score">0</span></p>
+                        <div class="difficulty-selector">
+                            <button class="diff-btn active" data-diff="facil">Fácil</button>
+                            <button class="diff-btn" data-diff="medio">Médio</button>
+                            <button class="diff-btn" data-diff="dificil">Difícil</button>
+                        </div>
+                        <button id="restart-btn" class="glow-button">Jogar Novamente</button>
+                    </div>
                 </div>
             </div>
-        </main>
 
-        <div class="controls-hint">
-            <p>Use as <strong>setas do teclado</strong> ou <strong>W A S D</strong> para mover</p>
-        </div>
+            <aside class="side-panel">
+                <div class="mini-leaderboard permanent">
+                    <h3>🏆 TOP 5 RECORDES</h3>
+                    <ul class="score-list" id="main-leaderboard-list"></ul>
+                </div>
+                
+                <div class="controls-hint side">
+                    <h3>🎮 Controles</h3>
+                    <div class="key-grid">
+                        <div class="key">W</div>
+                        <div class="key-row">
+                            <div class="key">A</div>
+                            <div class="key">S</div>
+                            <div class="key">D</div>
+                        </div>
+                    </div>
+                    <p>W: Cima | S: Baixo<br>A: Esquerda | D: Direita</p>
+                </div>
+            </aside>
+        </main>
     </div>
     <script src="script.js"></script>
 </body>

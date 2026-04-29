@@ -9,11 +9,11 @@ const diffBtns = document.querySelectorAll('.diff-btn');
 const startScreen = document.getElementById('start-screen');
 
 // Configurações do jogo
-let gridSize = 60;
-let tileCountX = 11;
-let tileCountY = 11;
+let gridSize = 44;
+let tileCountX = 10;
+let tileCountY = 10;
 
-let snake = [{x: 6, y: 6}];
+let snake = [{x: 5, y: 5}];
 let fase2 = false;
 let dx = 1;
 let dy = 0;
@@ -27,7 +27,7 @@ let currentSpeedUnits = 2;
 let snakeColor = '#39ff14';
 let gridColor = 'rgba(57, 255, 20, 0.2)';
 let gameLoopId;
-let boss = { active: false, x: 0, y: 0, moveCounter: 0 };
+let boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
 
 // Cores vibrantes para a comida
 const foodColors = [
@@ -51,9 +51,9 @@ function getSpeedFromDifficulty() {
 function initGame(isFirstLoad = false) {
     if (startScreen && !isFirstLoad) startScreen.classList.add('hidden');
     
-    // Todas as dificuldades agora usam 13x13 colunas
-    tileCountX = 13;
-    tileCountY = 13;
+    // Usando 10x10 colunas para aumentar o tamanho dos quadrados
+    tileCountX = 10;
+    tileCountY = 10;
     
     gridSize = 440 / tileCountX; // Valor fixo para evitar qualquer erro de carregamento
     fase2 = false;
@@ -61,10 +61,10 @@ function initGame(isFirstLoad = false) {
     // Cores aleatórias para a partida
     const randomHue = Math.floor(Math.random() * 360);
     snakeColor = `hsl(${randomHue}, 100%, 60%)`;
-    gridColor = `hsla(${randomHue}, 100%, 60%, 0.5)`; // Grade bem mais visível
+    gridColor = `hsla(${randomHue}, 100%, 60%, 0.8)`; // Grade BEM mais destacada e realista
     
     snake = [
-        { x: 6, y: 6 }
+        { x: Math.floor(tileCountX / 2), y: Math.floor(tileCountY / 2) }
     ];
     dx = 0; // Volta a ficar parada no início para evitar bugs
     dy = 0;
@@ -74,7 +74,7 @@ function initGame(isFirstLoad = false) {
     currentSpeedUnits = currentDifficulty === 'facil' ? 2 : (currentDifficulty === 'medio' ? 4 : 5);
     gameSpeed = 1000 / currentSpeedUnits;
     
-    boss = { active: false, x: 0, y: 0, moveCounter: 0 };
+    boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
 
     scoreElement.textContent = score;
     highScoreElement.textContent = highScore;
@@ -162,11 +162,23 @@ function update() {
         setTimeout(() => { canvas.style.boxShadow = ''; }, 200);
         
         // Fase 3: Boss at 100 points
-        if (score >= 100 && !boss.active) {
+        if (score >= 100 && score < 150 && !boss.active) {
             boss.active = true;
+            
+            // Cobra corre um pouco mais devagar
+            currentSpeedUnits *= 0.6; // Reduz em 40% a velocidade atual
+            gameSpeed = 1000 / currentSpeedUnits;
+
             // Spawn boss in corner furthest from player
-            boss.x = (snake[0].x > tileCountX / 2) ? 0 : tileCountX - 1;
-            boss.y = (snake[0].y > tileCountY / 2) ? 0 : tileCountY - 1;
+            let startX = (snake[0].x > tileCountX / 2) ? 0 : tileCountX - 1;
+            let startY = (snake[0].y > tileCountY / 2) ? 0 : tileCountY - 1;
+            
+            boss.body = [];
+            for (let i = 0; i < boss.length; i++) {
+                boss.body.push({ x: startX, y: startY });
+            }
+            boss.dx = 0;
+            boss.dy = 0;
             
             // Alert in UI
             const bossAlert = document.createElement('div');
@@ -184,6 +196,27 @@ function update() {
             document.querySelector('.canvas-wrapper').appendChild(bossAlert);
             setTimeout(() => bossAlert.remove(), 3000);
         }
+        
+        // Fase 4: Boss defeated at 150 points
+        if (score >= 150 && boss.active) {
+            boss.active = false;
+            
+            // Alert in UI
+            const victoryAlert = document.createElement('div');
+            victoryAlert.textContent = "BOSS DEFEATED!";
+            victoryAlert.style.position = 'absolute';
+            victoryAlert.style.top = '50%';
+            victoryAlert.style.left = '50%';
+            victoryAlert.style.transform = 'translate(-50%, -50%)';
+            victoryAlert.style.color = '#00ff00';
+            victoryAlert.style.fontSize = '3rem';
+            victoryAlert.style.fontWeight = 'bold';
+            victoryAlert.style.textShadow = '0 0 30px #00ff00, 0 0 10px #000';
+            victoryAlert.style.zIndex = '100';
+            victoryAlert.style.animation = 'pulse 0.5s infinite';
+            document.querySelector('.canvas-wrapper').appendChild(victoryAlert);
+            setTimeout(() => victoryAlert.remove(), 3000);
+        }
     } else {
         // Se não comeu, remove a cauda
         snake.pop();
@@ -192,17 +225,43 @@ function update() {
     // Boss Logic
     if (boss.active) {
         boss.moveCounter++;
-        // Boss moves 3 out of every 4 player moves (slightly slower)
-        if (boss.moveCounter >= 4) {
-            boss.moveCounter = 0;
+        // Nerf no Boss: movimenta-se apenas 1 vez a cada 3 turnos (bem mais lento para permitir desvio)
+        if (boss.moveCounter < 3) {
+            // Não faz nada, fica parado aguardando
         } else {
-            let diffX = snake[0].x - boss.x;
-            let diffY = snake[0].y - boss.y;
+            boss.moveCounter = 0;
+            let bossHead = boss.body[0];
+            let diffX = snake[0].x - bossHead.x;
+            let diffY = snake[0].y - bossHead.y;
             
+            let nextDx = boss.dx;
+            let nextDy = boss.dy;
+
             if (Math.abs(diffX) > Math.abs(diffY)) {
-                boss.x += Math.sign(diffX);
+                nextDx = Math.sign(diffX);
+                nextDy = 0;
             } else {
-                boss.y += Math.sign(diffY);
+                nextDx = 0;
+                nextDy = Math.sign(diffY);
+            }
+
+            // Evitar que o boss inverta a direção instantaneamente (suicídio)
+            if (boss.body.length > 1 && nextDx === -boss.dx && nextDx !== 0) {
+                nextDx = 0;
+                nextDy = diffY !== 0 ? Math.sign(diffY) : (Math.random() > 0.5 ? 1 : -1);
+            } else if (boss.body.length > 1 && nextDy === -boss.dy && nextDy !== 0) {
+                nextDy = 0;
+                nextDx = diffX !== 0 ? Math.sign(diffX) : (Math.random() > 0.5 ? 1 : -1);
+            }
+            
+            boss.dx = nextDx;
+            boss.dy = nextDy;
+
+            let newBossHead = { x: bossHead.x + boss.dx, y: bossHead.y + boss.dy };
+            
+            boss.body.unshift(newBossHead);
+            if (boss.body.length > boss.length) {
+                boss.body.pop();
             }
         }
     }
@@ -230,9 +289,25 @@ function checkGameOver() {
     }
     
     // Colisão com o Boss
-    if (boss.active && head.x === boss.x && head.y === boss.y) {
-        triggerGameOver();
-        return true;
+    if (boss.active) {
+        // Player batendo no corpo do Boss
+        for (let i = 0; i < boss.body.length; i++) {
+            if (head.x === boss.body[i].x && head.y === boss.body[i].y) {
+                triggerGameOver();
+                return true;
+            }
+        }
+        
+        // Boss batendo no Player
+        let bossHead = boss.body[0];
+        if (bossHead) {
+            for (let i = 0; i < snake.length; i++) {
+                if (bossHead.x === snake[i].x && bossHead.y === snake[i].y) {
+                    triggerGameOver();
+                    return true;
+                }
+            }
+        }
     }
     
     return false;
@@ -295,13 +370,16 @@ function renderLeaderboard() {
 }
 
 function draw() {
-    // Limpar o canvas
-    ctx.fillStyle = '#0a0a0a'; 
+    // Limpar o canvas (fundo translúcido para ver a imagem)
+    ctx.clearRect(0, 0, 440, 440);
+    ctx.fillStyle = 'rgba(10, 10, 10, 0.65)'; // Escurece um pouco para o jogo neon contrastar
     ctx.fillRect(0, 0, 440, 440);
     
-    // Desenhar grid sutil neon
+    // Desenhar grid super destacado (colunas)
     ctx.strokeStyle = gridColor; 
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2.5; // Espessura maior para destacar bem as colunas/linhas
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = gridColor;
     for(let i = 0; i <= 440; i += gridSize) {
         ctx.beginPath();
         ctx.moveTo(i, 0);
@@ -312,6 +390,7 @@ function draw() {
         ctx.lineTo(440, i);
         ctx.stroke();
     }
+    ctx.shadowBlur = 0; // Reseta para os próximos desenhos
 
     // Desenhar comida
     ctx.fillStyle = food.color;
@@ -342,27 +421,31 @@ function draw() {
     ctx.fill();
     ctx.globalAlpha = 1.0;
 
-    // Desenhar a cobra
+    // Desenhar a cobra de forma bem realista (efeito 3D)
     snake.forEach((part, index) => {
         const isHead = index === 0;
         const x = part.x * gridSize;
         const y = part.y * gridSize;
         
-        // Efeito de brilho intenso
-        ctx.shadowBlur = isHead ? 35 : 20;
-        ctx.shadowColor = snakeColor;
-        ctx.fillStyle = snakeColor; // Volta ao sólido para garantir compatibilidade total
-        
-        // Transparência suave para a cauda
-        ctx.globalAlpha = isHead ? 1.0 : Math.max(0.4, 1.0 - (index / snake.length));
-
-        drawRoundedRect(
-            x + 1, 
-            y + 1, 
-            gridSize - 2, 
-            gridSize - 2, 
-            isHead ? 12 : 8
+        // Gradiente radial para simular escamas esféricas 3D realistas
+        let grad = ctx.createRadialGradient(
+            x + gridSize * 0.3, y + gridSize * 0.3, gridSize * 0.05,
+            x + gridSize * 0.5, y + gridSize * 0.5, gridSize * 0.7
         );
+        grad.addColorStop(0, '#ffffff'); // Brilho de luz especular na escama
+        grad.addColorStop(0.3, snakeColor); // Cor natural
+        grad.addColorStop(1, '#001100'); // Sombra projetada
+
+        ctx.shadowBlur = isHead ? 35 : 15;
+        ctx.shadowColor = snakeColor;
+        ctx.fillStyle = grad;
+        
+        ctx.globalAlpha = isHead ? 1.0 : Math.max(0.6, 1.0 - (index / snake.length));
+
+        // Desenha a cobra mais larga, ocupando totalmente o espaço e até um pouco mais para dar volume
+        ctx.beginPath();
+        ctx.arc(x + gridSize/2, y + gridSize/2, gridSize / 1.7, 0, Math.PI * 2);
+        ctx.fill();
         
         ctx.globalAlpha = 1.0;
         
@@ -382,58 +465,92 @@ function draw() {
 }
 
 function drawBossEntity() {
-    const x = boss.x * gridSize;
-    const y = boss.y * gridSize;
+    if (!boss.body || boss.body.length === 0) return;
+
+    boss.body.forEach((part, index) => {
+        const isHead = index === 0;
+        const x = part.x * gridSize;
+        const y = part.y * gridSize;
+        
+        let grad = ctx.createRadialGradient(
+            x + gridSize * 0.3, y + gridSize * 0.3, gridSize * 0.05,
+            x + gridSize * 0.5, y + gridSize * 0.5, gridSize * 0.7
+        );
+        grad.addColorStop(0, '#ff8888'); // Brilho de pele monstruosa
+        grad.addColorStop(0.3, '#8b0000'); // Cor vermelho escuro
+        grad.addColorStop(1, '#220000'); // Sombra projetada
+
+        ctx.shadowBlur = isHead ? 35 : 15;
+        ctx.shadowColor = '#ff0000';
+        ctx.fillStyle = grad;
+        
+        ctx.globalAlpha = isHead ? 1.0 : Math.max(0.6, 1.0 - (index / boss.body.length));
+
+        ctx.beginPath();
+        ctx.arc(x + gridSize/2, y + gridSize/2, gridSize / 1.7, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.globalAlpha = 1.0;
+        
+        if (isHead) {
+            ctx.save();
+            ctx.translate(x, y);
+            const scale = gridSize / 40;
+            ctx.scale(scale, scale);
+            drawBossSnakeFace();
+            ctx.restore();
+        }
+    });
+}
+
+function drawBossSnakeFace() {
+    const px = 0;
+    const py = 0;
     
-    ctx.shadowBlur = 40;
-    ctx.shadowColor = '#ff0000';
-    ctx.fillStyle = '#660000'; // Dark red body
-    
-    drawRoundedRect(x + 1, y + 1, gridSize - 2, gridSize - 2, 12);
-    
-    ctx.save();
-    ctx.translate(x, y);
-    const scale = gridSize / 40;
-    ctx.scale(scale, scale);
-    
-    // Draw evil face
-    let faceDx = Math.sign(snake[0].x - boss.x) || 1;
-    let faceDy = Math.sign(snake[0].y - boss.y);
-    
-    if (faceDx === 0 && faceDy === 0) faceDx = 1;
+    const faceDx = (boss.dx === 0 && boss.dy === 0) ? 1 : boss.dx;
+    const faceDy = (boss.dx === 0 && boss.dy === 0) ? 0 : boss.dy;
     
     ctx.shadowBlur = 15;
     ctx.shadowColor = '#ff0000';
-    ctx.fillStyle = '#ff0000'; // Glowing red eyes
     
     let eye1X, eye1Y, eye2X, eye2Y;
     
-    if (faceDx === 1) { // Right
+    if (faceDx === 1) { // Direita
         eye1X = 26; eye1Y = 12; eye2X = 26; eye2Y = 28;
-    } else if (faceDx === -1) { // Left
+    } else if (faceDx === -1) { // Esquerda
         eye1X = 14; eye1Y = 12; eye2X = 14; eye2Y = 28;
-    } else if (faceDy === 1) { // Down
+    } else if (faceDy === 1) { // Baixo
         eye1X = 12; eye1Y = 26; eye2X = 28; eye2Y = 26;
-    } else if (faceDy === -1) { // Up
+    } else if (faceDy === -1) { // Cima
         eye1X = 12; eye1Y = 14; eye2X = 28; eye2Y = 14;
     } else {
         eye1X = 26; eye1Y = 12; eye2X = 26; eye2Y = 28;
     }
     
-    // Draw angular eyes
+    // Draw angular realistic glowing eyes
+    let eyeGrad1 = ctx.createRadialGradient(eye1X, eye1Y, 0, eye1X, eye1Y, 6);
+    eyeGrad1.addColorStop(0, '#ffffff');
+    eyeGrad1.addColorStop(0.2, '#ffff00');
+    eyeGrad1.addColorStop(1, '#ff0000');
+    ctx.fillStyle = eyeGrad1;
+
     ctx.beginPath();
-    ctx.moveTo(eye1X - 5 * faceDx, eye1Y - 5);
-    ctx.lineTo(eye1X + 5 * faceDx, eye1Y);
-    ctx.lineTo(eye1X - 5 * faceDx, eye1Y + 5);
+    ctx.moveTo(eye1X - 6 * faceDx, eye1Y - 6);
+    ctx.lineTo(eye1X + 6 * faceDx, eye1Y);
+    ctx.lineTo(eye1X - 6 * faceDx, eye1Y + 6);
     ctx.fill();
     
+    let eyeGrad2 = ctx.createRadialGradient(eye2X, eye2Y, 0, eye2X, eye2Y, 6);
+    eyeGrad2.addColorStop(0, '#ffffff');
+    eyeGrad2.addColorStop(0.2, '#ffff00');
+    eyeGrad2.addColorStop(1, '#ff0000');
+    ctx.fillStyle = eyeGrad2;
+
     ctx.beginPath();
-    ctx.moveTo(eye2X - 5 * faceDx, eye2Y - 5);
-    ctx.lineTo(eye2X + 5 * faceDx, eye2Y);
-    ctx.lineTo(eye2X - 5 * faceDx, eye2Y + 5);
+    ctx.moveTo(eye2X - 6 * faceDx, eye2Y - 6);
+    ctx.lineTo(eye2X + 6 * faceDx, eye2Y);
+    ctx.lineTo(eye2X - 6 * faceDx, eye2Y + 6);
     ctx.fill();
-    
-    ctx.restore();
 }
 
 function drawRoundedRect(x, y, width, height, radius) {
@@ -482,8 +599,20 @@ function drawSnakeFace() {
         eye2X = px + 28; eye2Y = py + 14;
     }
     
-    // Globos oculares
+    // Globos oculares (gradiente realista estilo cobra)
+    let eyeGrad1 = ctx.createRadialGradient(eye1X - 1, eye1Y - 1, 1, eye1X, eye1Y, eyeSize);
+    eyeGrad1.addColorStop(0, '#ffffff');
+    eyeGrad1.addColorStop(0.3, '#ffcc00'); // Amarelo réptil
+    eyeGrad1.addColorStop(1, '#552200');
+
+    let eyeGrad2 = ctx.createRadialGradient(eye2X - 1, eye2Y - 1, 1, eye2X, eye2Y, eyeSize);
+    eyeGrad2.addColorStop(0, '#ffffff');
+    eyeGrad2.addColorStop(0.3, '#ffcc00');
+    eyeGrad2.addColorStop(1, '#552200');
+
+    ctx.fillStyle = eyeGrad1;
     ctx.beginPath(); ctx.arc(eye1X, eye1Y, eyeSize, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = eyeGrad2;
     ctx.beginPath(); ctx.arc(eye2X, eye2Y, eyeSize, 0, Math.PI * 2); ctx.fill();
     
     // Pupilas (fenda estilo cobra)

@@ -62,7 +62,7 @@ body {
     position: relative;
     width: 440px;
     height: 440px;
-    background: #0a0a0a;
+    background: #0a0a0a url('snake_bg.png') center/cover no-repeat;
     border: 3px solid var(--glass-border);
     border-radius: 12px;
     box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);

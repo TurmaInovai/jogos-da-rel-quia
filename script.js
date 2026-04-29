@@ -26,6 +26,8 @@ let currentDifficulty = 'facil';
 let currentSpeedUnits = 2;
 let snakeColor = '#39ff14';
 let gridColor = 'rgba(57, 255, 20, 0.2)';
+let gameLoopId;
+let boss = { active: false, x: 0, y: 0, moveCounter: 0 };
 
 // Cores vibrantes para a comida
 const foodColors = [
@@ -68,9 +70,11 @@ function initGame(isFirstLoad = false) {
     dy = 0;
     score = 0;
     
-    // Velocidade inicial aumentada para ser bem visível: Fácil=6, Médio=10, Difícil=14
-    currentSpeedUnits = currentDifficulty === 'facil' ? 6 : (currentDifficulty === 'medio' ? 10 : 14);
+    // Velocidade inicial ajustada: Fácil=2, Médio=4, Difícil=5
+    currentSpeedUnits = currentDifficulty === 'facil' ? 2 : (currentDifficulty === 'medio' ? 4 : 5);
     gameSpeed = 1000 / currentSpeedUnits;
+    
+    boss = { active: false, x: 0, y: 0, moveCounter: 0 };
 
     scoreElement.textContent = score;
     highScoreElement.textContent = highScore;
@@ -156,9 +160,51 @@ function update() {
         // Efeito visual ao comer (opcional)
         canvas.style.boxShadow = `0 0 40px ${food.color}40`;
         setTimeout(() => { canvas.style.boxShadow = ''; }, 200);
+        
+        // Fase 3: Boss at 100 points
+        if (score >= 100 && !boss.active) {
+            boss.active = true;
+            // Spawn boss in corner furthest from player
+            boss.x = (snake[0].x > tileCountX / 2) ? 0 : tileCountX - 1;
+            boss.y = (snake[0].y > tileCountY / 2) ? 0 : tileCountY - 1;
+            
+            // Alert in UI
+            const bossAlert = document.createElement('div');
+            bossAlert.textContent = "BOSS BATTLE!";
+            bossAlert.style.position = 'absolute';
+            bossAlert.style.top = '50%';
+            bossAlert.style.left = '50%';
+            bossAlert.style.transform = 'translate(-50%, -50%)';
+            bossAlert.style.color = '#ff0000';
+            bossAlert.style.fontSize = '4rem';
+            bossAlert.style.fontWeight = 'bold';
+            bossAlert.style.textShadow = '0 0 30px #ff0000, 0 0 10px #000';
+            bossAlert.style.zIndex = '100';
+            bossAlert.style.animation = 'pulse 0.5s infinite';
+            document.querySelector('.canvas-wrapper').appendChild(bossAlert);
+            setTimeout(() => bossAlert.remove(), 3000);
+        }
     } else {
         // Se não comeu, remove a cauda
         snake.pop();
+    }
+
+    // Boss Logic
+    if (boss.active) {
+        boss.moveCounter++;
+        // Boss moves 3 out of every 4 player moves (slightly slower)
+        if (boss.moveCounter >= 4) {
+            boss.moveCounter = 0;
+        } else {
+            let diffX = snake[0].x - boss.x;
+            let diffY = snake[0].y - boss.y;
+            
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                boss.x += Math.sign(diffX);
+            } else {
+                boss.y += Math.sign(diffY);
+            }
+        }
     }
 }
 
@@ -181,6 +227,12 @@ function checkGameOver() {
                 return true;
             }
         }
+    }
+    
+    // Colisão com o Boss
+    if (boss.active && head.x === boss.x && head.y === boss.y) {
+        triggerGameOver();
+        return true;
     }
     
     return false;
@@ -323,6 +375,65 @@ function draw() {
             ctx.restore();
         }
     });
+
+    if (boss.active) {
+        drawBossEntity();
+    }
+}
+
+function drawBossEntity() {
+    const x = boss.x * gridSize;
+    const y = boss.y * gridSize;
+    
+    ctx.shadowBlur = 40;
+    ctx.shadowColor = '#ff0000';
+    ctx.fillStyle = '#660000'; // Dark red body
+    
+    drawRoundedRect(x + 1, y + 1, gridSize - 2, gridSize - 2, 12);
+    
+    ctx.save();
+    ctx.translate(x, y);
+    const scale = gridSize / 40;
+    ctx.scale(scale, scale);
+    
+    // Draw evil face
+    let faceDx = Math.sign(snake[0].x - boss.x) || 1;
+    let faceDy = Math.sign(snake[0].y - boss.y);
+    
+    if (faceDx === 0 && faceDy === 0) faceDx = 1;
+    
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff0000';
+    ctx.fillStyle = '#ff0000'; // Glowing red eyes
+    
+    let eye1X, eye1Y, eye2X, eye2Y;
+    
+    if (faceDx === 1) { // Right
+        eye1X = 26; eye1Y = 12; eye2X = 26; eye2Y = 28;
+    } else if (faceDx === -1) { // Left
+        eye1X = 14; eye1Y = 12; eye2X = 14; eye2Y = 28;
+    } else if (faceDy === 1) { // Down
+        eye1X = 12; eye1Y = 26; eye2X = 28; eye2Y = 26;
+    } else if (faceDy === -1) { // Up
+        eye1X = 12; eye1Y = 14; eye2X = 28; eye2Y = 14;
+    } else {
+        eye1X = 26; eye1Y = 12; eye2X = 26; eye2Y = 28;
+    }
+    
+    // Draw angular eyes
+    ctx.beginPath();
+    ctx.moveTo(eye1X - 5 * faceDx, eye1Y - 5);
+    ctx.lineTo(eye1X + 5 * faceDx, eye1Y);
+    ctx.lineTo(eye1X - 5 * faceDx, eye1Y + 5);
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.moveTo(eye2X - 5 * faceDx, eye2Y - 5);
+    ctx.lineTo(eye2X + 5 * faceDx, eye2Y);
+    ctx.lineTo(eye2X - 5 * faceDx, eye2Y + 5);
+    ctx.fill();
+    
+    ctx.restore();
 }
 
 function drawRoundedRect(x, y, width, height, radius) {
@@ -394,7 +505,7 @@ function drawSnakeFace() {
     ctx.ellipse(pupil2X, pupil2Y, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    if (score >= 50) {
+    if (score >= 10) {
         // Língua
         ctx.strokeStyle = '#ff3366'; // rosa vibrante
         ctx.lineWidth = 2.5;

@@ -7,6 +7,7 @@ const finalScoreElement = document.getElementById('final-score');
 const restartBtn = document.getElementById('restart-btn');
 const diffBtns = document.querySelectorAll('.diff-btn');
 const startScreen = document.getElementById('start-screen');
+const exitBtn = document.getElementById('exit-btn');
 
 // Configurações do jogo
 let gridSize = 44;
@@ -28,6 +29,9 @@ let snakeColor = '#39ff14';
 let gridColor = 'rgba(57, 255, 20, 0.2)';
 let gameLoopId;
 let boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
+let isDead = false;
+let deathProgress = 0;
+let deathAnimationId = null;
 
 // Cores vibrantes para a comida
 const foodColors = [
@@ -75,6 +79,12 @@ function initGame(isFirstLoad = false) {
     gameSpeed = 1000 / currentSpeedUnits;
     
     boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
+    isDead = false;
+    deathProgress = 0;
+    if (deathAnimationId) {
+        cancelAnimationFrame(deathAnimationId);
+        deathAnimationId = null;
+    }
 
     scoreElement.textContent = score;
     highScoreElement.textContent = highScore;
@@ -105,6 +115,7 @@ function spawnFood() {
 }
 
 function gameLoop() {
+    if (isDead) return;
     update();
     draw(); // Desenha sempre ANTES de checar o fim de jogo para garantir que o frame apareça
     if (checkGameOver()) return;
@@ -270,47 +281,200 @@ function update() {
 function checkGameOver() {
     // Retorna true se houver colisão
     const head = snake[0];
+    let collided = false;
     
     // Colisão com as paredes
     if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
-        triggerGameOver();
-        return true;
+        collided = true;
     }
     
     // Colisão com o próprio corpo
     // Ignorar se a cobra está de tamanho 1 ou se não moveu
-    if (dx !== 0 || dy !== 0) {
+    if (!collided && (dx !== 0 || dy !== 0)) {
         for (let i = 1; i < snake.length; i++) {
             if (head.x === snake[i].x && head.y === snake[i].y) {
-                triggerGameOver();
-                return true;
+                collided = true;
+                break;
             }
         }
     }
     
     // Colisão com o Boss
-    if (boss.active) {
+    if (!collided && boss.active) {
         // Player batendo no corpo do Boss
         for (let i = 0; i < boss.body.length; i++) {
             if (head.x === boss.body[i].x && head.y === boss.body[i].y) {
-                triggerGameOver();
-                return true;
+                collided = true;
+                break;
             }
         }
         
         // Boss batendo no Player
         let bossHead = boss.body[0];
-        if (bossHead) {
+        if (!collided && bossHead) {
             for (let i = 0; i < snake.length; i++) {
                 if (bossHead.x === snake[i].x && bossHead.y === snake[i].y) {
-                    triggerGameOver();
-                    return true;
+                    collided = true;
+                    break;
                 }
             }
         }
     }
     
+    if (collided) {
+        if (!isDead) {
+            startDeathAnimation();
+        }
+        return true;
+    }
+    
     return false;
+}
+
+function startDeathAnimation() {
+    isDead = true;
+    deathProgress = 0;
+    deathAnimationId = requestAnimationFrame(deathAnimationLoop);
+}
+
+function deathAnimationLoop() {
+    deathProgress += 0.015; // Duração aprox de 1.1s
+    if (deathProgress > 1) deathProgress = 1;
+
+    // Engana a função draw para desenhar a cobrinha pequena congelada e normal
+    let tempIsDead = isDead;
+    isDead = false;
+    draw();
+    isDead = tempIsDead;
+
+    drawGiantDeathAnimation(deathProgress);
+
+    if (deathProgress < 1) {
+        deathAnimationId = requestAnimationFrame(deathAnimationLoop);
+    } else {
+        setTimeout(triggerGameOver, 500);
+    }
+}
+
+function drawGiantDeathAnimation(progress) {
+    // Fundo escuro com opacidade crescendo rapidamente
+    const fade = Math.min(0.85, progress * 4);
+    ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    
+    // Animação de entrada rápida (pop-in)
+    const popScale = Math.min(1, progress * 4); 
+    if (popScale < 0.05) return; 
+
+    const giantRadius = 150 * popScale; // Cabeça gigante no meio da tela
+    
+    ctx.save();
+    
+    // Gira e tomba a cabeça
+    const easeProgress = Math.pow(progress, 0.5); 
+    const rotateAngle = Math.sin(easeProgress * Math.PI * 5) * 0.15 * (1 - easeProgress) + (easeProgress * Math.PI / 4);
+    
+    ctx.translate(centerX, centerY);
+    // Afunda um pouco
+    ctx.translate(0, easeProgress * 60);
+    ctx.rotate(rotateAngle);
+    ctx.translate(-centerX, -centerY);
+    
+    // Cabeça
+    let grad = ctx.createRadialGradient(
+        centerX - giantRadius*0.3, centerY - giantRadius*0.3, giantRadius * 0.1,
+        centerX, centerY, giantRadius * 1.5
+    );
+    // Perde brilho e escurece
+    grad.addColorStop(0, '#cccccc'); 
+    grad.addColorStop(0.3, snakeColor); 
+    grad.addColorStop(1, '#000000'); 
+    
+    ctx.fillStyle = grad;
+    
+    // Achata levemente
+    const flatten = 1 + (progress * 0.25);
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, giantRadius * flatten, giantRadius, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    let eyeHeightMultiplier = Math.max(0.05, 1 - progress * 3.5); // Fechar os olhos rápido
+    
+    // Olhos Gigantes
+    const eyeOffsetX = giantRadius * 0.4;
+    const eyeOffsetY = -giantRadius * 0.2;
+    const giantEyeSize = giantRadius * 0.25;
+    const giantPupilRx = giantEyeSize * 0.2;
+    const giantPupilRy = giantEyeSize * 0.6;
+
+    let eye1X = centerX - eyeOffsetX;
+    let eye1Y = centerY + eyeOffsetY;
+    let eye2X = centerX + eyeOffsetX;
+    let eye2Y = centerY + eyeOffsetY;
+
+    if (eyeHeightMultiplier > 0.05) {
+        let eyeGrad1 = ctx.createRadialGradient(eye1X - 5, eye1Y - 5, 2, eye1X, eye1Y, giantEyeSize);
+        eyeGrad1.addColorStop(0, '#ffffff');
+        eyeGrad1.addColorStop(0.3, '#ffcc00');
+        eyeGrad1.addColorStop(1, '#552200');
+
+        ctx.fillStyle = eyeGrad1;
+        ctx.beginPath(); ctx.ellipse(eye1X, eye1Y, giantEyeSize, giantEyeSize * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+        
+        let eyeGrad2 = ctx.createRadialGradient(eye2X - 5, eye2Y - 5, 2, eye2X, eye2Y, giantEyeSize);
+        eyeGrad2.addColorStop(0, '#ffffff');
+        eyeGrad2.addColorStop(0.3, '#ffcc00');
+        eyeGrad2.addColorStop(1, '#552200');
+
+        ctx.fillStyle = eyeGrad2;
+        ctx.beginPath(); ctx.ellipse(eye2X, eye2Y, giantEyeSize, giantEyeSize * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+        
+        // Pupilas
+        ctx.fillStyle = '#000000';
+        ctx.beginPath(); ctx.ellipse(eye1X, eye1Y, giantPupilRx, giantPupilRy * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(eye2X, eye2Y, giantPupilRx, giantPupilRy * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+        // Olhos fechados
+        ctx.strokeStyle = '#221100';
+        ctx.lineWidth = giantRadius * 0.06;
+        ctx.beginPath();
+        ctx.moveTo(eye1X - giantEyeSize, eye1Y);
+        ctx.quadraticCurveTo(eye1X, eye1Y + giantRadius*0.1, eye1X + giantEyeSize, eye1Y);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(eye2X - giantEyeSize, eye2Y);
+        ctx.quadraticCurveTo(eye2X, eye2Y + giantRadius*0.1, eye2X + giantEyeSize, eye2Y);
+        ctx.stroke();
+    }
+    
+    // Língua Gigante caindo
+    ctx.strokeStyle = '#cc5577';
+    ctx.lineWidth = giantRadius * 0.08;
+    ctx.lineCap = 'round';
+    
+    let tongueStartX = centerX;
+    let tongueStartY = centerY + giantRadius - giantRadius*0.1;
+    
+    let tongueLength = giantRadius * 0.8;
+    let tongueEndX = tongueStartX + progress * giantRadius * 0.3;
+    let tongueEndY = tongueStartY + tongueLength + progress * giantRadius * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(tongueStartX, tongueStartY);
+    ctx.lineTo(tongueEndX, tongueEndY);
+    
+    let forkLength = giantRadius * 0.15;
+    ctx.moveTo(tongueEndX, tongueEndY);
+    ctx.lineTo(tongueEndX - forkLength, tongueEndY + forkLength * 1.5);
+    ctx.moveTo(tongueEndX, tongueEndY);
+    ctx.lineTo(tongueEndX + forkLength, tongueEndY + forkLength * 1.5);
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 function triggerGameOver() {
@@ -432,26 +596,52 @@ function draw() {
             x + gridSize * 0.3, y + gridSize * 0.3, gridSize * 0.05,
             x + gridSize * 0.5, y + gridSize * 0.5, gridSize * 0.7
         );
-        grad.addColorStop(0, '#ffffff'); // Brilho de luz especular na escama
-        grad.addColorStop(0.3, snakeColor); // Cor natural
-        grad.addColorStop(1, '#001100'); // Sombra projetada
+        
+        if (isDead) {
+            // Cobra morta perde um pouco do brilho
+            grad.addColorStop(0, '#cccccc'); 
+            grad.addColorStop(0.3, snakeColor);
+            grad.addColorStop(1, '#000000'); 
+        } else {
+            grad.addColorStop(0, '#ffffff'); // Brilho de luz especular na escama
+            grad.addColorStop(0.3, snakeColor); // Cor natural
+            grad.addColorStop(1, '#001100'); // Sombra projetada
+        }
 
-        ctx.shadowBlur = isHead ? 35 : 15;
-        ctx.shadowColor = snakeColor;
+        ctx.shadowBlur = isDead ? 0 : (isHead ? 35 : 15);
+        ctx.shadowColor = isDead ? 'transparent' : snakeColor;
         ctx.fillStyle = grad;
         
         ctx.globalAlpha = isHead ? 1.0 : Math.max(0.6, 1.0 - (index / snake.length));
 
-        // Desenha a cobra mais larga, ocupando totalmente o espaço e até um pouco mais para dar volume
-        ctx.beginPath();
-        ctx.arc(x + gridSize/2, y + gridSize/2, gridSize / 1.7, 0, Math.PI * 2);
-        ctx.fill();
+        if (isDead) {
+            // Corpo "esparramado" no chão ao morrer
+            const flatten = 1 + (deathProgress * 0.2); // Fica até 20% mais gorda e achatada
+            ctx.beginPath();
+            ctx.ellipse(x + gridSize/2, y + gridSize/2, (gridSize / 1.7) * flatten, gridSize / 1.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Desenha a cobra mais larga, ocupando totalmente o espaço e até um pouco mais para dar volume
+            ctx.beginPath();
+            ctx.arc(x + gridSize/2, y + gridSize/2, gridSize / 1.7, 0, Math.PI * 2);
+            ctx.fill();
+        }
         
         ctx.globalAlpha = 1.0;
         
         if (isHead) {
             ctx.save();
             ctx.translate(x, y);
+            
+            if (isDead) {
+                // Faz a cabeça girar para o lado e afundar suavemente, simulando desmaio
+                const easeProgress = Math.pow(deathProgress, 0.5); 
+                const rotateAngle = Math.sin(easeProgress * Math.PI * 5) * 0.15 * (1 - easeProgress) + (easeProgress * Math.PI / 2.5);
+                ctx.translate(gridSize/2, gridSize/2);
+                ctx.rotate(rotateAngle);
+                ctx.translate(-gridSize/2, -gridSize/2);
+            }
+            
             const scale = gridSize / 40;
             ctx.scale(scale, scale);
             drawSnakeFace();
@@ -599,44 +789,66 @@ function drawSnakeFace() {
         eye2X = px + 28; eye2Y = py + 14;
     }
     
-    // Globos oculares (gradiente realista estilo cobra)
-    let eyeGrad1 = ctx.createRadialGradient(eye1X - 1, eye1Y - 1, 1, eye1X, eye1Y, eyeSize);
-    eyeGrad1.addColorStop(0, '#ffffff');
-    eyeGrad1.addColorStop(0.3, '#ffcc00'); // Amarelo réptil
-    eyeGrad1.addColorStop(1, '#552200');
-
-    let eyeGrad2 = ctx.createRadialGradient(eye2X - 1, eye2Y - 1, 1, eye2X, eye2Y, eyeSize);
-    eyeGrad2.addColorStop(0, '#ffffff');
-    eyeGrad2.addColorStop(0.3, '#ffcc00');
-    eyeGrad2.addColorStop(1, '#552200');
-
-    ctx.fillStyle = eyeGrad1;
-    ctx.beginPath(); ctx.arc(eye1X, eye1Y, eyeSize, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = eyeGrad2;
-    ctx.beginPath(); ctx.arc(eye2X, eye2Y, eyeSize, 0, Math.PI * 2); ctx.fill();
-    
-    // Pupilas (fenda estilo cobra)
-    ctx.fillStyle = '#000000';
-    const pOffset = 1.5;
-    const pupil1X = eye1X + faceDx * pOffset;
-    const pupil1Y = eye1Y + faceDy * pOffset;
-    const pupil2X = eye2X + faceDx * pOffset;
-    const pupil2Y = eye2Y + faceDy * pOffset;
+    // Globos oculares e pálpebras
+    let eyeHeightMultiplier = 1;
+    if (isDead) {
+        // Olhos fecham progressivamente
+        eyeHeightMultiplier = Math.max(0.1, 1 - deathProgress * 3);
+    }
     
     const isHorizontal = faceDx !== 0;
-    const rx = isHorizontal ? pupilSize : 1.5;
-    const ry = isHorizontal ? 1.5 : pupilSize;
+
+    if (eyeHeightMultiplier > 0.1) {
+        let eyeGrad1 = ctx.createRadialGradient(eye1X - 1, eye1Y - 1, 1, eye1X, eye1Y, eyeSize);
+        eyeGrad1.addColorStop(0, '#ffffff');
+        eyeGrad1.addColorStop(0.3, '#ffcc00'); // Amarelo réptil
+        eyeGrad1.addColorStop(1, '#552200');
+
+        let eyeGrad2 = ctx.createRadialGradient(eye2X - 1, eye2Y - 1, 1, eye2X, eye2Y, eyeSize);
+        eyeGrad2.addColorStop(0, '#ffffff');
+        eyeGrad2.addColorStop(0.3, '#ffcc00');
+        eyeGrad2.addColorStop(1, '#552200');
+
+        ctx.fillStyle = eyeGrad1;
+        ctx.beginPath(); ctx.ellipse(eye1X, eye1Y, eyeSize, eyeSize * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = eyeGrad2;
+        ctx.beginPath(); ctx.ellipse(eye2X, eye2Y, eyeSize, eyeSize * eyeHeightMultiplier, 0, 0, Math.PI * 2); ctx.fill();
+        
+        // Pupilas (fenda estilo cobra)
+        ctx.fillStyle = '#000000';
+        const pOffset = 1.5;
+        const pupil1X = eye1X + faceDx * pOffset;
+        const pupil1Y = eye1Y + faceDy * pOffset;
+        const pupil2X = eye2X + faceDx * pOffset;
+        const pupil2Y = eye2Y + faceDy * pOffset;
+        
+        const rx = isHorizontal ? pupilSize : 1.5;
+        const ry = isHorizontal ? 1.5 : pupilSize;
+        
+        ctx.beginPath();
+        ctx.ellipse(pupil1X, pupil1Y, rx, ry * eyeHeightMultiplier, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(pupil2X, pupil2Y, rx, ry * eyeHeightMultiplier, 0, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        // Olhos fechados (uma linha curvada de "desmaio")
+        ctx.strokeStyle = '#221100';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(eye1X - eyeSize, eye1Y);
+        ctx.quadraticCurveTo(eye1X, eye1Y + 4, eye1X + eyeSize, eye1Y);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(eye2X - eyeSize, eye2Y);
+        ctx.quadraticCurveTo(eye2X, eye2Y + 4, eye2X + eyeSize, eye2Y);
+        ctx.stroke();
+    }
     
-    ctx.beginPath();
-    ctx.ellipse(pupil1X, pupil1Y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(pupil2X, pupil2Y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    if (score >= 10) {
+    if (score >= 10 || isDead) {
         // Língua
-        ctx.strokeStyle = '#ff3366'; // rosa vibrante
+        ctx.strokeStyle = isDead ? '#cc5577' : '#ff3366'; // rosa vibrante ou mais pálida se morta
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -647,20 +859,32 @@ function drawSnakeFace() {
         let ex = bx + faceDx * 12;
         let ey = by + faceDy * 12;
         
+        if (isDead) {
+            // A língua cai mais flácida para baixo e sai mais da boca
+            ex += (faceDy === 0 ? 0 : faceDx * 4);
+            ey += (faceDx === 0 ? 4 : 8); 
+        }
+
         ctx.moveTo(bx, by);
         ctx.lineTo(ex, ey);
         
         // Bifurcação da língua mais detalhada
-        if (isHorizontal) {
+        if (isHorizontal && !isDead) {
             ctx.moveTo(ex, ey);
             ctx.lineTo(ex + faceDx * 5, ey - 5);
             ctx.moveTo(ex, ey);
             ctx.lineTo(ex + faceDx * 5, ey + 5);
-        } else {
+        } else if (!isHorizontal && !isDead) {
             ctx.moveTo(ex, ey);
             ctx.lineTo(ex - 5, ey + faceDy * 5);
             ctx.moveTo(ex, ey);
             ctx.lineTo(ex + 5, ey + faceDy * 5);
+        } else if (isDead) {
+            // Língua flácida, pontas caídas
+            ctx.moveTo(ex, ey);
+            ctx.lineTo(ex + 2, ey + 4);
+            ctx.moveTo(ex, ey);
+            ctx.lineTo(ex - 2, ey + 4);
         }
         ctx.stroke();
     }
@@ -704,6 +928,22 @@ window.addEventListener('keydown', e => {
 restartBtn.addEventListener('click', () => {
     initGame();
 });
+
+if (exitBtn) {
+    exitBtn.addEventListener('click', () => {
+        // Pausar o jogo imediatamente
+        isDead = true;
+        if (gameLoopId) clearTimeout(gameLoopId);
+        if (deathAnimationId) cancelAnimationFrame(deathAnimationId);
+        
+        // Tenta fechar a aba (se o navegador permitir)
+        try { window.close(); } catch(e) {}
+        
+        // Se a aba não fechar, volta para a tela inicial simulando que "saiu"
+        startScreen.classList.remove('hidden');
+        gameOverScreen.classList.add('hidden');
+    });
+}
 
 if (diffBtns) {
     diffBtns.forEach(btn => {

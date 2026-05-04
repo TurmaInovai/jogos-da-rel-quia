@@ -250,6 +250,27 @@ canvas {
     transform: translateY(1px);
 }
 
+.exit-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.exit-btn:hover {
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
+    background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
 .controls-hint {
     color: var(--text-secondary);
     font-size: 0.9rem;

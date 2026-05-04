@@ -32,6 +32,9 @@ let boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
 let isDead = false;
 let deathProgress = 0;
 let deathAnimationId = null;
+let immunityEndTime = 0;
+let immunityCooldownTime = 0;
+const powerStatusElement = document.getElementById('power-status');
 
 // Cores vibrantes para a comida
 const foodColors = [
@@ -81,6 +84,12 @@ function initGame(isFirstLoad = false) {
     boss = { active: false, body: [], moveCounter: 0, length: 8, dx: 0, dy: 0 };
     isDead = false;
     deathProgress = 0;
+    immunityEndTime = 0;
+    immunityCooldownTime = 0;
+    if (powerStatusElement) {
+        powerStatusElement.textContent = "Pronto!";
+        powerStatusElement.style.color = "#39ff14";
+    }
     if (deathAnimationId) {
         cancelAnimationFrame(deathAnimationId);
         deathAnimationId = null;
@@ -125,9 +134,41 @@ function gameLoop() {
 function update() {
     if (dx === 0 && dy === 0) return; // Não mover enquanto não houver input
 
+    const now = Date.now();
+    const isImmune = now < immunityEndTime;
+    
+    // Atualizar UI do Poder
+    if (powerStatusElement) {
+        if (isImmune) {
+            powerStatusElement.textContent = `Ativo: ${Math.ceil((immunityEndTime - now)/1000)}s`;
+            powerStatusElement.style.color = "#ffd700";
+        } else if (now < immunityCooldownTime) {
+            powerStatusElement.textContent = `Espera: ${Math.ceil((immunityCooldownTime - now)/1000)}s`;
+            powerStatusElement.style.color = "#ef4444";
+        } else {
+            powerStatusElement.textContent = "Pronto!";
+            powerStatusElement.style.color = "#39ff14";
+        }
+    }
+
     // Calcular nova posição da cabeça
-    const headX = snake[0].x + dx;
-    const headY = snake[0].y + dy;
+    let headX = snake[0].x + dx;
+    let headY = snake[0].y + dy;
+    
+    // Poder: Bater na parede durante a imunidade (bate e volta perdendo velocidade)
+    if (isImmune && (headX < 0 || headX >= tileCountX || headY < 0 || headY >= tileCountY)) {
+        dx = -dx;
+        dy = -dy;
+        
+        currentSpeedUnits = Math.max(1.5, currentSpeedUnits * 0.8); // Perde velocidade
+        gameSpeed = 1000 / currentSpeedUnits;
+        
+        canvas.style.boxShadow = `0 0 30px #ffd700`;
+        setTimeout(() => { canvas.style.boxShadow = ''; }, 200);
+        
+        headX = snake[0].x + dx;
+        headY = snake[0].y + dy;
+    }
     
     const newHead = { x: headX, y: headY };
     
@@ -248,12 +289,21 @@ function update() {
             let nextDx = boss.dx;
             let nextDy = boss.dy;
 
-            if (Math.abs(diffX) > Math.abs(diffY)) {
-                nextDx = Math.sign(diffX);
-                nextDy = 0;
+            // NERF: Boss só tenta seguir o jogador ativamente 50% das vezes
+            if (Math.random() < 0.5) {
+                if (Math.abs(diffX) > Math.abs(diffY)) {
+                    nextDx = Math.sign(diffX);
+                    nextDy = 0;
+                } else {
+                    nextDx = 0;
+                    nextDy = Math.sign(diffY);
+                }
             } else {
-                nextDx = 0;
-                nextDy = Math.sign(diffY);
+                // Nos outros 50%, tenta manter a direção se estiver andando, ou escolhe uma aleatória se parado
+                if (nextDx === 0 && nextDy === 0) {
+                    nextDx = Math.random() > 0.5 ? 1 : -1;
+                    nextDy = 0;
+                }
             }
 
             // Evitar que o boss inverta a direção instantaneamente (suicídio)
@@ -279,9 +329,12 @@ function update() {
 }
 
 function checkGameOver() {
-    // Retorna true se houver colisão
     const head = snake[0];
     let collided = false;
+    
+    const now = Date.now();
+    const isImmune = now < immunityEndTime;
+    if (isImmune) return false; // Se estiver imune, ignora qualquer colisão!
     
     // Colisão com as paredes
     if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
@@ -289,7 +342,6 @@ function checkGameOver() {
     }
     
     // Colisão com o próprio corpo
-    // Ignorar se a cobra está de tamanho 1 ou se não moveu
     if (!collided && (dx !== 0 || dy !== 0)) {
         for (let i = 1; i < snake.length; i++) {
             if (head.x === snake[i].x && head.y === snake[i].y) {
@@ -301,22 +353,11 @@ function checkGameOver() {
     
     // Colisão com o Boss
     if (!collided && boss.active) {
-        // Player batendo no corpo do Boss
-        for (let i = 0; i < boss.body.length; i++) {
-            if (head.x === boss.body[i].x && head.y === boss.body[i].y) {
-                collided = true;
-                break;
-            }
-        }
-        
-        // Boss batendo no Player
+        // NERF: O boss só mata o jogador se houver colisão de CABEÇAS
         let bossHead = boss.body[0];
-        if (!collided && bossHead) {
-            for (let i = 0; i < snake.length; i++) {
-                if (bossHead.x === snake[i].x && bossHead.y === snake[i].y) {
-                    collided = true;
-                    break;
-                }
+        if (bossHead) {
+            if (head.x === bossHead.x && head.y === bossHead.y) {
+                collided = true;
             }
         }
     }
@@ -597,7 +638,14 @@ function draw() {
             x + gridSize * 0.5, y + gridSize * 0.5, gridSize * 0.7
         );
         
-        if (isDead) {
+        const now = Date.now();
+        const isImmune = now < immunityEndTime;
+
+        if (isImmune) {
+            grad.addColorStop(0, '#ffffff'); 
+            grad.addColorStop(0.3, '#ffd700'); // Dourado imune
+            grad.addColorStop(1, '#ff8800'); 
+        } else if (isDead) {
             // Cobra morta perde um pouco do brilho
             grad.addColorStop(0, '#cccccc'); 
             grad.addColorStop(0.3, snakeColor);
@@ -609,7 +657,7 @@ function draw() {
         }
 
         ctx.shadowBlur = isDead ? 0 : (isHead ? 35 : 15);
-        ctx.shadowColor = isDead ? 'transparent' : snakeColor;
+        ctx.shadowColor = isImmune ? '#ffd700' : (isDead ? 'transparent' : snakeColor);
         ctx.fillStyle = grad;
         
         ctx.globalAlpha = isHead ? 1.0 : Math.max(0.6, 1.0 - (index / snake.length));
@@ -921,6 +969,18 @@ window.addEventListener('keydown', e => {
             if (dx === -1) break;
             dx = 1;
             dy = 0;
+            break;
+        case 'g':
+            if (Date.now() >= immunityCooldownTime) {
+                immunityEndTime = Date.now() + 5000;
+                immunityCooldownTime = Date.now() + 25000;
+                
+                // Efeito visual na borda para confirmar
+                if (canvas) {
+                    canvas.style.boxShadow = `0 0 50px #ffd700`;
+                    setTimeout(() => { canvas.style.boxShadow = ''; }, 300);
+                }
+            }
             break;
     }
 });
